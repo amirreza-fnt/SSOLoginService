@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "UmxiWXjf9TKUbZZoO29t7KZib209mlThmYmP5+oZzqw=",
+  "Source": "SSOLoginService.Api",
+  "BasePath": "_content/SSOLoginService.Api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}
