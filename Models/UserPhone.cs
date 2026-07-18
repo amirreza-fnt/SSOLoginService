@@ -28,5 +28,5 @@ public class UserPhone
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [ForeignKey(nameof(UserId))]
-    public virtual User User { get; set; } = null!;
+    public virtual User? User { get; set; }
 }
