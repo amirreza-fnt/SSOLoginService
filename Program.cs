@@ -181,6 +181,13 @@ builder.Services.AddHttpClient("SmsClient", client =>
         new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 });
 
+builder.Services.AddHttpClient("SSOClient", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Accept.Add(
+        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+});
+
 #endregion
 
 #region Rate Limiting
@@ -257,7 +264,10 @@ builder.Services.AddCors(options =>
 
 #region Dependency Injection
 
-builder.Services.AddScoped<IMinistrySSOService, MinistrySSOService>();
+// SSO Providers
+builder.Services.AddScoped<ISSOProvider, MoiSSOProvider>();
+builder.Services.AddScoped<ISSOProvider, DolatManSSOProvider>();
+
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IOtpService, OtpService>();

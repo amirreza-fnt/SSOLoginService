@@ -42,4 +42,7 @@ public class MinistrySSOUserInfo
 
     [JsonPropertyName("Avatar")]
     public string? Avatar { get; set; }
+
+    [JsonPropertyName("PhoneList")]
+    public string? PhoneList { get; set; }
 }

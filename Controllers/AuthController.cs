@@ -15,7 +15,7 @@ namespace SSOLoginService.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
-    private readonly IMinistrySSOService _ministrySsoService;
+    private readonly IEnumerable<ISSOProvider> _ssoProviders;
     private readonly IOtpService _otpService;
     private readonly ITokenService _tokenService;
     private readonly ILogger<AuthController> _logger;
@@ -23,14 +23,14 @@ public class AuthController : ControllerBase
 
     public AuthController(
         IAuthService authService,
-        IMinistrySSOService ministrySsoService,
+        IEnumerable<ISSOProvider> ssoProviders,
         IOtpService otpService,
         ITokenService tokenService,
         ILogger<AuthController> logger,
         IConfiguration configuration)
     {
         _authService = authService;
-        _ministrySsoService = ministrySsoService;
+        _ssoProviders = ssoProviders;
         _otpService = otpService;
         _tokenService = tokenService;
         _logger = logger;
@@ -55,23 +55,35 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("login")]
-    public IActionResult RedirectToSSO()
+    public async Task<IActionResult> RedirectToSSO([FromQuery] string? provider = null)
     {
+        var ssoProvider = ResolveProvider(provider);
+        if (ssoProvider == null)
+            return BadRequest(ApiResponse<object>.Fail("SSO provider not found"));
+
         var state = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-        var loginUrl = _ministrySsoService.GetLoginUrlAsync(state).Result;
+        var callbackUrl = $"{Request.Scheme}://{Request.Host}/sso/callback?provider={ssoProvider.ProviderType.ToString().ToLower()}";
+        var loginUrl = await ssoProvider.GetAuthorizationUrlAsync(state, callbackUrl);
 
         HttpContext.Session.SetString("LoginState", state);
+        HttpContext.Session.SetString("SSOProvider", ssoProvider.ProviderType.ToString());
 
         return Redirect(loginUrl);
     }
 
     [HttpPost("login/initiate")]
-    public IActionResult InitiateLogin([FromBody] LoginInitiateRequest? request)
+    public async Task<IActionResult> InitiateLogin([FromBody] LoginInitiateRequest? request)
     {
+        var ssoProvider = ResolveProvider("moi");
+        if (ssoProvider == null)
+            return BadRequest(ApiResponse<object>.Fail("SSO provider not found"));
+
         var state = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-        var loginUrl = _ministrySsoService.GetLoginUrlAsync(state).Result;
+        var callbackUrl = $"{Request.Scheme}://{Request.Host}/sso/callback?provider={ssoProvider.ProviderType.ToString().ToLower()}";
+        var loginUrl = await ssoProvider.GetAuthorizationUrlAsync(state, callbackUrl);
 
         HttpContext.Session.SetString("LoginState", state);
+        HttpContext.Session.SetString("SSOProvider", ssoProvider.ProviderType.ToString());
         HttpContext.Session.SetString("ReturnUrl", request?.ReturnUrl ?? "/");
 
         return Ok(ApiResponse<LoginInitiateResponse>.Ok(
@@ -213,6 +225,38 @@ public class AuthController : ControllerBase
             return Ok(ApiResponse<object>.Fail("توکن نامعتبر است"));
 
         return Ok(ApiResponse<object>.Ok(new { userId = userId.Value }));
+    }
+
+    [HttpGet("providers")]
+    public IActionResult GetProviders()
+    {
+        var providers = _ssoProviders.Select(p => new
+        {
+            name = p.ProviderType.ToString().ToLower(),
+            label = p.ProviderType switch
+            {
+                SSOProviderType.Moi => "پنجره ملی خدمات وزارت کشور",
+                SSOProviderType.DolatMan => "دولت من",
+                _ => p.ProviderType.ToString()
+            },
+            isActive = p.IsActive,
+            loginUrl = p.IsActive
+                ? Url.Action(nameof(RedirectToSSO), new { provider = p.ProviderType.ToString().ToLower() })
+                : null
+        });
+
+        return Ok(ApiResponse<object>.Ok(providers));
+    }
+
+    private ISSOProvider? ResolveProvider(string? provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+            return _ssoProviders.FirstOrDefault(p => p.IsActive);
+
+        if (Enum.TryParse<SSOProviderType>(provider, true, out var type))
+            return _ssoProviders.FirstOrDefault(p => p.ProviderType == type && p.IsActive);
+
+        return _ssoProviders.FirstOrDefault(p => p.IsActive);
     }
 
     private void SetRefreshTokenCookie(string refreshToken, int maxAgeInSeconds)

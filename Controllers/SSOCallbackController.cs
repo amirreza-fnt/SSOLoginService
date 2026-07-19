@@ -1,10 +1,7 @@
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using SSOLoginService.Api.DTOs.Common;
-using SSOLoginService.Api.DTOs.MinistrySSO;
 using SSOLoginService.Api.Services.Interfaces;
 
 namespace SSOLoginService.Api.Controllers;
@@ -14,90 +11,59 @@ namespace SSOLoginService.Api.Controllers;
 [Produces("application/json")]
 public class SSOCallbackController : ControllerBase
 {
-    private readonly IMinistrySSOService _ministrySsoService;
+    private readonly IEnumerable<ISSOProvider> _ssoProviders;
     private readonly IAuthService _authService;
-    private readonly ITokenService _tokenService;
     private readonly ILogger<SSOCallbackController> _logger;
     private readonly IConfiguration _configuration;
-    private readonly ISmsService _smsService;
 
     public SSOCallbackController(
-        IMinistrySSOService ministrySsoService,
+        IEnumerable<ISSOProvider> ssoProviders,
         IAuthService authService,
-        ITokenService tokenService,
         ILogger<SSOCallbackController> logger,
-        IConfiguration configuration,
-        ISmsService smsService)
+        IConfiguration configuration)
     {
-        _ministrySsoService = ministrySsoService;
+        _ssoProviders = ssoProviders;
         _authService = authService;
-        _tokenService = tokenService;
         _logger = logger;
         _configuration = configuration;
-        _smsService = smsService;
     }
 
     [HttpGet("/sso/callback")]
     [AllowAnonymous]
-    public async Task<IActionResult> SSOCallback()
+    public async Task<IActionResult> SSOCallback(
+        [FromQuery] string? provider = null,
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null)
     {
         try
         {
             _logger.LogInformation("SSO callback received: {QueryString}", Request.QueryString.Value);
 
-            var fullQueryString = Request.QueryString.Value?.TrimStart('?');
-            if (string.IsNullOrWhiteSpace(fullQueryString))
-                return RedirectToClientWithError("no_data", "اطلاعات احراز هویت دریافت نشد");
-
-            byte[] jsonBytes;
-            try
+            var ssoProvider = ResolveProvider(provider);
+            if (ssoProvider == null)
             {
-                jsonBytes = Convert.FromBase64String(fullQueryString);
-            }
-            catch
-            {
-                return RedirectToClientWithError("invalid_format", "فرمت داده ورودی نامعتبر است");
+                _logger.LogWarning("No SSO provider found for: {Provider}", provider);
+                return RedirectToClientWithError("invalid_provider", "پروایدر SSO نامعتبر است");
             }
 
-            var jsonData = Encoding.UTF8.GetString(jsonBytes);
-            _logger.LogInformation("Decoded JSON: {Json}", jsonData);
+            var result = await ssoProvider.HandleCallbackAsync(Request.Query);
 
-            MinistrySSOCallbackPayload? payload;
-            try
+            if (!result.IsSuccess)
             {
-                payload = JsonSerializer.Deserialize<MinistrySSOCallbackPayload>(jsonData);
-            }
-            catch
-            {
-                return RedirectToClientWithError("invalid_json", "فرمت JSON نامعتبر است");
+                _logger.LogWarning("SSO callback failed: {Error}", result.Error);
+                return RedirectToClientWithError("auth_failed", result.Error ?? "خطا در احراز هویت");
             }
 
-            if (payload == null || !payload.Status)
-                return RedirectToClientWithError("invalid_data", "اطلاعات احراز هویت نامعتبر است");
-
-            if (string.IsNullOrWhiteSpace(payload.Data))
-                return RedirectToClientWithError("no_data", "داده رمزنگاری شده یافت نشد");
-
-            if (payload.IvKey.Length == 0)
-                return RedirectToClientWithError("no_iv", "کلید رمزنگاری یافت نشد");
-
-            var appSecret = _configuration["MinistrySSO:AppSecret"];
-            if (string.IsNullOrWhiteSpace(appSecret))
-                return RedirectToClientWithError("config_error", "تنظیمات SSO یافت نشد");
-
-            var userInfo = await _ministrySsoService.DecryptAndExtractUserInfoAsync(
-                payload.Data, payload.IvKey, appSecret);
-
-            if (userInfo == null)
-                return RedirectToClientWithError("decrypt_error", "خطا در رمزگشایی اطلاعات کاربر");
-
-            if (string.IsNullOrWhiteSpace(userInfo.MelliCode))
+            if (result.UserInfo == null || string.IsNullOrWhiteSpace(result.UserInfo.MelliCode))
                 return RedirectToClientWithError("missing_melli_code", "کد ملی در اطلاعات SSO یافت نشد");
 
-            var result = await _authService.ProcessMinistrySSOLoginAsync(userInfo);
+            _logger.LogInformation("SSO user authenticated: melliCode={MelliCode}, provider={Provider}",
+                result.UserInfo.MelliCode, ssoProvider.ProviderType);
+
+            var tokenResult = await _authService.ProcessMinistrySSOLoginAsync(result.UserInfo);
 
             var frontendUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
-            var callbackUrl = $"{frontendUrl}/auth/callback?token={result.AccessToken}&refreshToken={result.RefreshToken}";
+            var callbackUrl = $"{frontendUrl}/auth/callback?token={tokenResult.AccessToken}&refreshToken={tokenResult.RefreshToken}";
 
             _logger.LogInformation("Redirecting to frontend: {CallbackUrl}", callbackUrl);
             return Redirect(callbackUrl);
@@ -107,6 +73,17 @@ public class SSOCallbackController : ControllerBase
             _logger.LogError(ex, "Critical error in SSO callback");
             return RedirectToClientWithError("server_error", "خطای داخلی سرور");
         }
+    }
+
+    private ISSOProvider? ResolveProvider(string? provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+            return _ssoProviders.FirstOrDefault();
+
+        if (Enum.TryParse<SSOProviderType>(provider, true, out var type))
+            return _ssoProviders.FirstOrDefault(p => p.ProviderType == type);
+
+        return _ssoProviders.FirstOrDefault();
     }
 
     private IActionResult RedirectToClientWithError(string errorCode, string errorMessage)
