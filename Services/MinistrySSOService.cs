@@ -21,9 +21,14 @@ public class MinistrySSOService : IMinistrySSOService
 
     public Task<string> GetLoginUrlAsync(string state)
     {
-        var appId = _configuration["MinistrySSO:AppId"];
-        var baseUrl = _configuration["MinistrySSO:BaseUrl"] ?? "https://sso.moi.ir";
-        var loginUrl = $"{baseUrl}/login?appid={appId}&state={state}";
+        var appId = _configuration["SSO:AppId"];
+        var baseUrl = _configuration["SSO:LoginBaseUrl"] ?? "https://login.sabzevar.ir";
+        var callbackUrl = _configuration["SSO:CallbackUrl"];
+
+        var loginUrl = $"{baseUrl}?appid={appId}&state={state}";
+        if (!string.IsNullOrWhiteSpace(callbackUrl))
+            loginUrl += $"&redirect_uri={Uri.EscapeDataString(callbackUrl)}";
+
         return Task.FromResult(loginUrl);
     }
 

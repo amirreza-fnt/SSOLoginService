@@ -1,12 +1,9 @@
 using System.Security.Claims;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using SSOLoginService.Api.DTOs.Auth;
 using SSOLoginService.Api.DTOs.Common;
-using SSOLoginService.Api.DTOs.MinistrySSO;
 using SSOLoginService.Api.Services.Interfaces;
 
 namespace SSOLoginService.Api.Controllers;
@@ -55,6 +52,17 @@ public class AuthController : ControllerBase
             return NotFound(ApiResponse<object>.Fail("User not found"));
 
         return Ok(ApiResponse<object>.Ok(userInfo));
+    }
+
+    [HttpGet("login")]
+    public IActionResult RedirectToSSO()
+    {
+        var state = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var loginUrl = _ministrySsoService.GetLoginUrlAsync(state).Result;
+
+        HttpContext.Session.SetString("LoginState", state);
+
+        return Redirect(loginUrl);
     }
 
     [HttpPost("login/initiate")]
