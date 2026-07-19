@@ -1,5 +1,3 @@
-using System.Collections.Specialized;
-using System.Net;
 using System.Text;
 using System.Text.Json;
 using SSOLoginService.Api.DTOs.MinistrySSO;
@@ -30,22 +28,16 @@ public class MoiSSOProvider : ISSOProvider
     public Task<string> GetAuthorizationUrlAsync(string state, string? callbackUrl = null)
     {
         var config = GetMoiConfig();
-        var redirectUri = callbackUrl ?? config.CallbackUrl;
+        var redirectUri = Uri.EscapeDataString(callbackUrl ?? config.CallbackUrl);
 
-        var query = new NameValueCollection
-        {
-            ["response_type"] = "code",
-            ["scope"] = "openid profile",
-            ["client_id"] = config.ClientId,
-            ["state"] = state,
-            ["redirect_uri"] = redirectUri,
-            ["nonce"] = Guid.NewGuid().ToString("N")
-        };
+        var loginUrl = $"{config.AuthorizationUrl}" +
+                       $"?response_type=code" +
+                       $"&scope=openid%20profile" +
+                       $"&client_id={config.ClientId}" +
+                       $"&state={state}" +
+                       $"&redirect_uri={redirectUri}";
 
-        var queryString = string.Join("&",
-            query.AllKeys.Select(k => $"{WebUtility.UrlEncode(k)}={WebUtility.UrlEncode(query[k]!)}"));
-
-        return Task.FromResult($"{config.AuthorizationUrl}?{queryString}");
+        return Task.FromResult(loginUrl);
     }
 
     public async Task<SSOCallbackResult> HandleCallbackAsync(IQueryCollection query)
