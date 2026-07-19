@@ -57,7 +57,7 @@ public class AuthService : IAuthService
     public async Task<List<UserPhoneDto>> GetUserPhonesAsync(string melliCode)
     {
         var phones = await _context.UserPhones
-            .Where(p => p.User.MelliCode == melliCode && p.IsVerified)
+            .Where(p => p.User != null && p.User.MelliCode == melliCode && p.IsVerified)
             .Select(p => new UserPhoneDto
             {
                 Id = p.Id,
@@ -81,12 +81,8 @@ public class AuthService : IAuthService
         {
             Id = user.Id.ToString(),
             MelliCode = user.MelliCode,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
             Phone = user.Phones.FirstOrDefault(p => p.IsPrimary)?.PhoneNumber
-                     ?? user.Phones.FirstOrDefault()?.PhoneNumber,
-            Email = user.Email,
-            Avatar = user.Avatar
+                     ?? user.Phones.FirstOrDefault()?.PhoneNumber
         };
     }
 
@@ -114,20 +110,8 @@ public class AuthService : IAuthService
 
         if (existingUser != null)
         {
-            existingUser.FirstName = ssoUserInfo.FirstName ?? existingUser.FirstName;
-            existingUser.LastName = ssoUserInfo.LastName ?? existingUser.LastName;
-            existingUser.FatherName = ssoUserInfo.FatherName ?? existingUser.FatherName;
-            existingUser.BirthDate = ssoUserInfo.BirthDate ?? existingUser.BirthDate;
-            existingUser.Gender = ssoUserInfo.Gender ?? existingUser.Gender;
-            existingUser.Address = ssoUserInfo.Address ?? existingUser.Address;
-            existingUser.Province = ssoUserInfo.Province ?? existingUser.Province;
-            existingUser.City = ssoUserInfo.City ?? existingUser.City;
-            existingUser.Email = ssoUserInfo.Email ?? existingUser.Email;
-            existingUser.Avatar = ssoUserInfo.Avatar ?? existingUser.Avatar;
             existingUser.LastLoginAt = DateTime.UtcNow;
-
             await SyncPhoneAsync(existingUser, ssoUserInfo.Mobile);
-
             await _context.SaveChangesAsync();
             return existingUser;
         }
@@ -136,16 +120,6 @@ public class AuthService : IAuthService
         {
             Id = Guid.NewGuid(),
             MelliCode = ssoUserInfo.MelliCode ?? throw new InvalidOperationException("MelliCode is required"),
-            FirstName = ssoUserInfo.FirstName,
-            LastName = ssoUserInfo.LastName,
-            FatherName = ssoUserInfo.FatherName,
-            BirthDate = ssoUserInfo.BirthDate,
-            Gender = ssoUserInfo.Gender,
-            Address = ssoUserInfo.Address,
-            Province = ssoUserInfo.Province,
-            City = ssoUserInfo.City,
-            Email = ssoUserInfo.Email,
-            Avatar = ssoUserInfo.Avatar,
             CreatedAt = DateTime.UtcNow,
             LastLoginAt = DateTime.UtcNow,
             IsActive = true
@@ -200,11 +174,7 @@ public class AuthService : IAuthService
             User = new UserInfoDto
             {
                 Id = user.Id.ToString(),
-                MelliCode = user.MelliCode,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Email = user.Email,
-                Avatar = user.Avatar
+                MelliCode = user.MelliCode
             }
         };
     }

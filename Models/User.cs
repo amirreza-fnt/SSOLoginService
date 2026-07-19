@@ -14,36 +14,6 @@ public class User
     [MaxLength(20)]
     public string MelliCode { get; set; } = string.Empty;
 
-    [MaxLength(100)]
-    public string? FirstName { get; set; }
-
-    [MaxLength(100)]
-    public string? LastName { get; set; }
-
-    [MaxLength(200)]
-    public string? FatherName { get; set; }
-
-    [MaxLength(20)]
-    public string? BirthDate { get; set; }
-
-    [MaxLength(10)]
-    public string? Gender { get; set; }
-
-    [MaxLength(500)]
-    public string? Address { get; set; }
-
-    [MaxLength(255)]
-    public string? Avatar { get; set; }
-
-    [MaxLength(255)]
-    public string? Email { get; set; }
-
-    [MaxLength(100)]
-    public string? Province { get; set; }
-
-    [MaxLength(100)]
-    public string? City { get; set; }
-
     public bool IsActive { get; set; } = true;
 
     [Required]
