@@ -48,7 +48,7 @@ KillSignal=SIGINT
 SyslogIdentifier=$APP_NAME
 User=www-data
 Environment=ASPNETCORE_ENVIRONMENT=$DOTNET_ENV
-Environment=ASPNETCORE_URLS=http://0.0.0.0:5001
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5005
 
 # Connection string - set this in production
 # Environment=ConnectionStrings__DefaultConnection=Server=...;Database=...;User Id=...;Password=...;
