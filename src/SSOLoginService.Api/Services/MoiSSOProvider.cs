@@ -82,7 +82,9 @@ public class MoiSSOProvider : ISSOProvider
                     City = userInfo.City,
                     PostalCode = userInfo.PostalCode,
                     Email = userInfo.Email,
-                    PhoneList = userInfo.PhoneList
+                    PhoneList = userInfo.PhoneList,
+                    Roles = userInfo.Roles,
+                    GroupId = null
                 }
             };
         }

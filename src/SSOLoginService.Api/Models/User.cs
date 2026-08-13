@@ -26,6 +26,14 @@ public class User
     [MaxLength(45)]
     public string? LastLoginIP { get; set; }
 
+    /// <summary>JSON array of role strings (e.g. ["ROLE_OPERATOR","ROLE_MANAGER"]).</summary>
+    [MaxLength(1024)]
+    public string? RolesJson { get; set; }
+
+    /// <summary>Municipal group id when the user belongs to one group (e.g. EXECUTION).</summary>
+    [MaxLength(64)]
+    public string? GroupId { get; set; }
+
     public virtual ICollection<UserPhone> Phones { get; set; } = new List<UserPhone>();
     public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }

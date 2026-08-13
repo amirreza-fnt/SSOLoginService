@@ -1,8 +1,11 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SSOLoginService.Api.Data;
 using SSOLoginService.Api.DTOs.Auth;
 using SSOLoginService.Api.DTOs.MinistrySSO;
 using SSOLoginService.Api.Models;
+using SSOLoginService.Api.Options;
 using SSOLoginService.Api.Services.Interfaces;
 
 namespace SSOLoginService.Api.Services;
@@ -11,15 +14,18 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _context;
     private readonly ITokenService _tokenService;
+    private readonly IOptions<StaffDirectoryOptions> _staffDirectory;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         AppDbContext context,
         ITokenService tokenService,
+        IOptions<StaffDirectoryOptions> staffDirectory,
         ILogger<AuthService> logger)
     {
         _context = context;
         _tokenService = tokenService;
+        _staffDirectory = staffDirectory;
         _logger = logger;
     }
 
@@ -46,6 +52,8 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("کاربر با این کد ملی یافت نشد");
 
         user.LastLoginAt = DateTime.UtcNow;
+        ApplyStaffDirectoryOverride(user);
+        await _context.SaveChangesAsync();
 
         var tokens = await _tokenService.GenerateTokensAsync(user);
 
@@ -77,13 +85,13 @@ public class AuthService : IAuthService
 
         if (user == null) return null;
 
-        return new UserInfoDto
+        ApplyStaffDirectoryOverride(user);
+        if (_context.Entry(user).State == EntityState.Modified)
         {
-            Id = user.Id.ToString(),
-            MelliCode = user.MelliCode,
-            Phone = user.Phones.FirstOrDefault(p => p.IsPrimary)?.PhoneNumber
-                     ?? user.Phones.FirstOrDefault()?.PhoneNumber
-        };
+            await _context.SaveChangesAsync();
+        }
+
+        return ToUserInfoDto(user);
     }
 
     public async Task LogoutAsync(Guid userId)
@@ -111,6 +119,8 @@ public class AuthService : IAuthService
         if (existingUser != null)
         {
             existingUser.LastLoginAt = DateTime.UtcNow;
+            MergeRolesFromSso(existingUser, ssoUserInfo);
+            ApplyStaffDirectoryOverride(existingUser);
             await SyncPhoneAsync(existingUser, ssoUserInfo.Mobile);
             await _context.SaveChangesAsync();
             return existingUser;
@@ -124,6 +134,9 @@ public class AuthService : IAuthService
             LastLoginAt = DateTime.UtcNow,
             IsActive = true
         };
+
+        MergeRolesFromSso(newUser, ssoUserInfo);
+        ApplyStaffDirectoryOverride(newUser);
 
         _context.Users.Add(newUser);
 
@@ -141,6 +154,46 @@ public class AuthService : IAuthService
         await _context.SaveChangesAsync();
         _logger.LogInformation("New user created from Ministry SSO: {UserId}", newUser.Id);
         return newUser;
+    }
+
+    private static void MergeRolesFromSso(User user, MinistrySSOUserInfo ssoUserInfo)
+    {
+        if (ssoUserInfo.Roles is { Count: > 0 })
+        {
+            user.RolesJson = JsonSerializer.Serialize(
+                ssoUserInfo.Roles.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().ToList());
+        }
+
+        if (!string.IsNullOrWhiteSpace(ssoUserInfo.GroupId))
+        {
+            user.GroupId = ssoUserInfo.GroupId.Trim();
+        }
+    }
+
+    /// <summary>
+    /// Municipality staff roles that MOI does not provide can be configured in StaffDirectory.
+    /// Config wins over empty DB roles; non-empty MOI/DB roles are preserved unless config sets roles.
+    /// </summary>
+    private void ApplyStaffDirectoryOverride(User user)
+    {
+        var entry = _staffDirectory.Value.Entries
+            .FirstOrDefault(e => string.Equals(e.MelliCode?.Trim(), user.MelliCode, StringComparison.Ordinal));
+
+        if (entry is null)
+        {
+            return;
+        }
+
+        if (entry.Roles is { Count: > 0 })
+        {
+            user.RolesJson = JsonSerializer.Serialize(
+                entry.Roles.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().ToList());
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.GroupId))
+        {
+            user.GroupId = entry.GroupId.Trim();
+        }
     }
 
     private async Task SyncPhoneAsync(User user, string? mobile)
@@ -171,11 +224,41 @@ public class AuthService : IAuthService
             RefreshToken = tokens.RefreshToken,
             ExpiresIn = tokens.ExpiresIn,
             TokenType = "Bearer",
-            User = new UserInfoDto
-            {
-                Id = user.Id.ToString(),
-                MelliCode = user.MelliCode
-            }
+            User = ToUserInfoDto(user)
         };
+    }
+
+    internal static UserInfoDto ToUserInfoDto(User user)
+    {
+        return new UserInfoDto
+        {
+            Id = user.Id.ToString(),
+            MelliCode = user.MelliCode,
+            Phone = user.Phones.FirstOrDefault(p => p.IsPrimary)?.PhoneNumber
+                     ?? user.Phones.FirstOrDefault()?.PhoneNumber,
+            Roles = ParseRoles(user.RolesJson),
+            GroupId = user.GroupId
+        };
+    }
+
+    internal static List<string> ParseRoles(string? rolesJson)
+    {
+        if (string.IsNullOrWhiteSpace(rolesJson))
+        {
+            return new List<string>();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(rolesJson)
+                   ?.Where(r => !string.IsNullOrWhiteSpace(r))
+                   .Distinct()
+                   .ToList()
+                   ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
     }
 }

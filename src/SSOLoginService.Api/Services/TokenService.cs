@@ -37,13 +37,25 @@ public class TokenService : ITokenService
         var accessTokenExpiration = int.Parse(
             _configuration["Jwt:AccessTokenExpirationMinutes"] ?? "60");
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim("MelliCode", user.MelliCode),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim("IsActive", user.IsActive.ToString())
         };
+
+        foreach (var role in AuthService.ParseRoles(user.RolesJson))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+            claims.Add(new Claim("role", role));
+        }
+
+        if (!string.IsNullOrWhiteSpace(user.GroupId))
+        {
+            claims.Add(new Claim("group_id", user.GroupId));
+            claims.Add(new Claim("groupId", user.GroupId));
+        }
 
         var token = new JwtSecurityToken(
             issuer: _configuration["Jwt:Issuer"] ?? "SSOLoginService",

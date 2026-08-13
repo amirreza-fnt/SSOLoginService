@@ -45,4 +45,12 @@ public class MinistrySSOUserInfo
 
     [JsonPropertyName("PhoneList")]
     public string? PhoneList { get; set; }
+
+    /// <summary>Optional municipal / MOI roles (e.g. ROLE_OPERATOR).</summary>
+    [JsonPropertyName("Roles")]
+    public List<string>? Roles { get; set; }
+
+    /// <summary>Optional municipal group id (e.g. EXECUTION).</summary>
+    [JsonPropertyName("GroupId")]
+    public string? GroupId { get; set; }
 }

@@ -269,6 +269,8 @@ builder.Services.AddScoped<ISSOProvider, MoiSSOProvider>();
 builder.Services.AddScoped<ISSOProvider, DolatManSSOProvider>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.Configure<SSOLoginService.Api.Options.StaffDirectoryOptions>(
+    builder.Configuration.GetSection(SSOLoginService.Api.Options.StaffDirectoryOptions.SectionName));
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
@@ -336,6 +338,15 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
         await context.Database.EnsureCreatedAsync();
+
+        // Additive columns for roles/groups (EnsureCreated does not alter existing DBs).
+        await context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH('Users', 'RolesJson') IS NULL
+                ALTER TABLE Users ADD RolesJson nvarchar(1024) NULL;
+            IF COL_LENGTH('Users', 'GroupId') IS NULL
+                ALTER TABLE Users ADD GroupId nvarchar(64) NULL;
+            """);
+
         logger.LogInformation("Database checked/created successfully");
     }
     catch (Exception ex)
